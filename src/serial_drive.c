@@ -6,56 +6,64 @@
 #include <termios.h> /* POSIX terminal control definitions */
 #include <stdlib.h> 
 
-int open_port(void) {
-  int fd; /* File descriptor for the port */
-  fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
-  if (fd == -1)
-  {
-   /*
-    * Could not open the port.
-    */
-    perror("open_port: Unable to open /dev/ttyS0 - ");
-  }
-  else
-    fcntl(fd, F_SETFL, 0);
-  return (fd);
-}
-
-int main(){
+char* write_port(char *device_name,char *command,char *buf) {
+    struct termios config;
     unsigned short x;
     int fd, n, m, o;
-    char buf[255];
-
-    printf("Connecting to /dev/ttyS0\nIf this hangs power cycle the amtren device\n");
-    fd=open_port();
-    o = write(fd, "C", 1);
-    if (n < 0) fputs("write() of 1 byte failed!\n", stderr);
-    fcntl(fd, F_SETFL, 0);
-    m=read(fd, buf,1);
-    buf[m]=0;
-    printf("Initialize: [%s] [X] Desired.\n",buf);
   
-    system("/usr/bin/eject /dev/scd0");
+    memset(buf, 255, sizeof(char));
+    fd = open(device_name, O_RDWR | O_NOCTTY | O_NDELAY);
+    if (fd == -1){
+        fprintf(stderr,"open_port: Unable to open %s", device_name);
+    }else{
+       if(!isatty(fd)){ 
+           fprintf(stderr,"%s is not a tty\n",device_name);
+             exit(-1);
+        }
+        if(tcgetattr(fd, &config) < 0) {
+            fprintf(stderr,"unable to read config for %s\n",device_name);
+            exit(-1);
+        }
+        config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL | INLCR | PARMRK | INPCK | ISTRIP | IXON);
+        config.c_oflag = 0;
+        config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+        config.c_cflag &= ~(CSIZE | PARENB);
+        config.c_cflag |= CS8; // 8n1
+        config.c_cc[VMIN]  = 1;
+        config.c_cc[VTIME] = 0;
+        if(cfsetispeed(&config, B9600) < 0 || cfsetospeed(&config, B9600) < 0) {
+            fprintf(stderr,"unable to write config for %s\n",device_name);
+            exit(-1);
+        }
+        if(tcsetattr(fd, TCSAFLUSH, &config) < 0) {
+            fprintf(stderr,"unable to apply the config for %s\n",device_name);
+            exit(-1);
+        }
+        fcntl(fd, F_SETFL, 0);
+        o = write(fd, command, 1);
+        if (o < 0) fputs("write() of 1 byte failed!\n", stderr);
+        fcntl(fd, F_SETFL, 0);
+        m=read(fd, buf,255);
+        buf[m]=0;
+        close(fd);
+         
+    }
+    return(buf);
+}
 
-    /* Remove CD */
-    o = write(fd, "A", 1);
-    if (o < 0) fputs("write() of 1 byte failed!\n", stderr);
-    fcntl(fd, F_SETFL, 0);
-    m=read(fd, buf,1);
-    buf[m]=0;
-    printf("Remove old: [%s] [X] Desired.\n",buf);
-    if( ! buf[0]=='X'){ printf("die!\n"); exit(-1); }
+void usage(){
+    printf("serial_drive <device> <command>\n");
+    printf("serial_drive /dev/ttyS0 [C|I|A|G|S|V]\n");
+}
 
-    /* Insert CD */
-    o = write(fd, "I", 1);
-    if (o < 0) fputs("write() of 1 byte failed!\n", stderr);
-    fcntl(fd, F_SETFL, 0);
-    m=read(fd, buf,1);
-    buf[m]=0;
-    printf("Insert new: [%s] [X] Desired.\n",buf);
-    if( ! buf[0]=='X'){ printf("die!\n"); exit(-1); }
-
-    system("/usr/bin/eject -t /dev/scd0");
-
-    close(fd);
+int main(int argc, char *argv[]){
+    int count=0;
+    char buf[255];
+    if(argc < 3 || argc >3){
+        usage();
+        exit(1);
+    }
+    write_port(argv[1],argv[2],buf);
+    printf("%s\n",buf);
+    exit (0); 
 }
