@@ -39,6 +39,7 @@ Status Codes:
   18 - Up Encoder Timeout
   19 - Down Encoder Timeout
   21 - Drive Tray Empty
+  22 - Could not get disc from input bin (empty?)
   23 - Printer Empty
   65 -- ?? From running 'T' on the flexwriter
 
